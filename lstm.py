@@ -1,5 +1,6 @@
 import compiler_gym
 import numpy as np
+import math
 import random
 import torch
 import torch.nn as nn
@@ -50,10 +51,19 @@ def get_dataset(env,dataset="benchmark://cbench-v1"):
 class replay_buffer:
     def __init__(self, capacity=50000):
         #self.hash_table = {}
-        self.memory = deque([],maxlen=capacity)
+        #self.memory = deque([],maxlen=capacity)
+        self.memory = []
 
     def get_batch(self,batch_size=128):
-        return random.sample(self.memory, batch_size)
+        #return random.sample(self.memory, batch_size)
+        random.shuffle(self.memory)
+        if len(self.memory) >= batch_size:
+            r = self.memory[:batch_size]
+            self.memory = self.memory[batch_size:]
+        else:
+            r = self.memory
+            self.memory = []
+        return r
 
     def insert(self,step):
         self.memory.append(step)
@@ -63,94 +73,132 @@ class replay_buffer:
 
 
 #env = compiler_gym.make("llvm-v0",benchmark="cbench-v1/qsort")
-env = compiler_gym.make("llvm-v0",observation_space="IrSha1",reward_space="ObjectTextSizeOz")
+env = compiler_gym.make("llvm-v0",observation_space="IrSha1",reward_space="ObjectTextSizeBytes")
 env.reset()
 
 corpus = get_dataset(env)
 
-BATCH_SIZE = 128
+BATCH_SIZE = 16
 GAMMA = 0.999
-#E_START = 0.9
-E_START = 1
-E_END = 0.05
-E_DECAY = 200
-TARGET_UPDATE = 10
+E_START = 0.9
+E_END = 0.5
+E_DECAY = 2000
+TARGET_UPDATE = 500
 EP_MAX_STEPS = 30
+LEARNING_RATE = 0.01
+
 
 policy_net = DQN(len(env.observation["Inst2vec"][0]),len(env.action_space.names)).to(device)
 target_net = DQN(len(env.observation["Inst2vec"][0]),len(env.action_space.names)).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameters())
-memory = replay_buffer(100)
+optimizer = optim.Adam(policy_net.parameters(),lr=LEARNING_RATE)
+memory = replay_buffer()
 
 steps = 0
+max_seen_total_reward = -10000
 
-for _ in range(5):
-    # TODO : this is NOT a scalable approach
-    #env.reset(benchmark=corpus[random.randint(0,len(corpus)-1)])
+
+def sample_traj(episodes=5):
+    global steps
+    #print(E_END + (E_START - E_END) * math.exp(-1. * steps / E_DECAY))
+
+    for _ in range(episodes):
+        # TODO : this is NOT a scalable approach
+        #env.reset(benchmark=corpus[random.randint(0,len(corpus)-1)])
+        env.reset(benchmark="cbench-v1/patricia")
+        #print(env.benchmark)
+
+        total_reward = 0
+
+        for _ in range(EP_MAX_STEPS):
+
+            observation = env.observation["Inst2vec"]
+            
+            #global steps
+            epsilon = E_END + (E_START - E_END) * math.exp(-1. * steps / E_DECAY)
+            steps += 1
+
+            if random.random() < epsilon:
+                action = env.action_space.sample()
+            else:
+                action = policy_net(torch.tensor([observation])).argmax().item()
+                #print(type(action.)) # action is int
+
+            _, reward, done, _ = env.step(action)
+            observation_next = env.observation["Inst2vec"]
+            total_reward += reward
+
+            memory.insert([observation,action,reward,observation_next])
+
+            if done:
+                break
+
+        global max_seen_total_reward
+        if total_reward > max_seen_total_reward:
+            max_seen_total_reward = total_reward
+
+
+def validate():
+    env_val = compiler_gym.make("llvm-v0",reward_space="ObjectTextSizeNorm")
     env.reset(benchmark="cbench-v1/patricia")
-    print(env.benchmark)
+    reward = 0
+    actions = []
     for _ in range(EP_MAX_STEPS):
+        action = policy_net(torch.tensor([env.observation["Inst2vec"]])).argmax().item()
+        reward += env.step(action)[1]
+        actions.append(action)
 
-        #observation = env.observation["IrSha1"]
-        #observation_i2v = tf.expand_dims(tf.convert_to_tensor(env.observation["Inst2vec"]),0)
-        #observation_i2v = tf.convert_to_tensor(env.observation["Inst2vec"])
-        #replay_buf.hash_table[observation] = observation_i2v
-        observation = env.observation["Inst2vec"]
-
-        if random.random() < E_START: # TODO: decay
-            action = env.action_space.sample()
-        else:
-            action = policy_net(torch.tensor([observation])).argmax().item()
-            #print(type(action.)) # action is int
-
-        _, reward, done, _ = env.step(action)
-        observation_next = env.observation["Inst2vec"]
-
-        memory.insert([observation,action,reward,observation_next])
-
-    #observation_last = tf.expand_dims(tf.convert_to_tensor(env.observation["Inst2vec"]),0)
-    #observation_last = tf.convert_to_tensor(env.observation["Inst2vec"])
-    #replay_buf.hash_table[env.observation["IrSha1"]] = observation_last
+    print(f'{updates} : Reward = {reward}, MAX = {max_seen_total_reward}, Actions = {actions}')
 
 
-BATCH_SIZE = 16
-batch = memory.get_batch(BATCH_SIZE)
-s0, s1, r, a = [],[],[],[]
-for i in range(BATCH_SIZE):
-    s0.append(torch.tensor(batch[i][0]))
-    s1.append(torch.tensor(batch[i][3]))
-    r.append([batch[i][2]])
-    a.append([batch[i][1]])
+def train():
+    global updates
 
-s0 = pad_sequence(s0,batch_first=True) # s0.shape = (batch,1489+-,200)
-s1 = pad_sequence(s1,batch_first=True)
-r = torch.tensor(r).to(device)
-a = torch.tensor(a).to(device)
+    while(len(memory) >= BATCH_SIZE):
+        batch = memory.get_batch(BATCH_SIZE)
+        s0, s1, r, a = [],[],[],[]
+        for i in range(BATCH_SIZE):
+            s0.append(torch.tensor(batch[i][0]))
+            s1.append(torch.tensor(batch[i][3]))
+            r.append([batch[i][2]])
+            a.append([batch[i][1]])
 
-# policy_net(s0) has output shape of (batch,num_actions)
-Q_s0 = torch.gather(policy_net(s0),1,a)
-Q_s1 = target_net(s1).max(dim=1,keepdim=True)[0].detach() # max returns (max,argmax)
+        s0 = pad_sequence(s0,batch_first=True) # s0.shape = (batch,1489+-,200)
+        s1 = pad_sequence(s1,batch_first=True)
+        r = torch.tensor(r).to(device)
+        a = torch.tensor(a).to(device)
 
-#print(Q_s0)
-#print(Q_s1)
-
-criterion = nn.SmoothL1Loss()
-loss = criterion(Q_s0, Q_s1 + GAMMA*r)
-
-optimizer.zero_grad()
-loss.backward()
-for param in policy_net.parameters():
-    param.grad.data.clamp_(-1, 1)
-optimizer.step()
+        # policy_net(s0) has output shape of (batch,num_actions)
+        Q_s0 = torch.gather(policy_net(s0),1,a)
+        Q_s1 = target_net(s1).max(dim=1,keepdim=True)[0].detach() # max returns (max,argmax)
 
 
+        criterion = nn.SmoothL1Loss()
+        loss = criterion(Q_s0, Q_s1 + GAMMA*r)
+        #if not updates % 10:
+        #    print(f'UPDATE {updates}, LOSS = {loss}')
 
-# for i in env.datasets["benchmark://cbench-v1"].benchmarks():
-#   print(i)
-# for i in env.datasets["benchmark://cbench-v1"].benchmark_uris():
+        if not updates % 30:
+            validate()
 
+
+        optimizer.zero_grad()
+        loss.backward()
+        for param in policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        optimizer.step()
+
+        updates += 1
+        if not updates % TARGET_UPDATE:
+            target_net.load_state_dict(policy_net.state_dict())
+
+
+updates = 0
+while updates < 100000:
+    sample_traj()
+    train()
 
 env.close()
+
