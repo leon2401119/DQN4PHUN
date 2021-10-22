@@ -13,9 +13,12 @@ class DQN(nn.Module):
 
     def forward(self,x):
         x = x.to(device)
-        x = F.relu(self.dense1(x))
-        x = F.relu(self.dense2(x))
-        x = F.relu(self.dense3(x))
+        #x = torch.tanh(self.dense1(x))
+        #x = torch.tanh(self.dense2(x))
+        #x = torch.tanh(self.dense3(x)) # expect negative output, so no activation??
+        x = self.dense1(x)
+        x = self.dense2(x)
+        x = self.dense3(x)
         return x
 
 
