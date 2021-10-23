@@ -1,16 +1,9 @@
 import compiler_gym
-from multiprocessing import Pool,cpu_count
 import time
 import random
 import numpy as np
-from DQN import *
 from multiprocessing.connection import Client
-from multiprocessing import shared_memory
-from multiprocessing.managers import BaseManager
-class QueueManager(BaseManager): pass
-QueueManager.register('get_queue')
-#from multiprocessing import set_start_method
-#set_start_method("spawn")
+import torch
 
 def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
     env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
@@ -69,23 +62,11 @@ def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
 
     env.close()
 
-    #shared_replay_mem = shared_memory.SharedMemory(name='replay_memory')
-    #buf = shared_replay_mem.buf
-
-    #m = QueueManager(address=('127.0.0.1', 50000), authkey=b'abc')
-    #m.connect()
-    #queue = m.get_queue()
-
     conn = Client(('localhost', 6000), authkey=b'secret password')
     conn.send(('enqueue',trajectory))
     conn.close()
 
-    #for traj in trajectory:
-    #    for step in traj:
-    #        queue.put(step)
-            #buf.append(step)
-
-    print('done')
+    #print('done')
     #return None
     #return trajectory
 

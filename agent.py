@@ -135,7 +135,7 @@ while running:
         conn.send((steps,loss))
         conn.close()
 
-    if len(replay_mem) >= 500:
+    if len(replay_mem) >= 2000:
         train(1,0.5,5000)
 
 
