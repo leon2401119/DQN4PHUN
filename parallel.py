@@ -1,16 +1,18 @@
 import compiler_gym
-from torch.multiprocessing import Pool,cpu_count,set_start_method
+from multiprocessing import Pool,cpu_count
 import time
 import random
 import numpy as np
 from DQN import *
+from multiprocessing.connection import Client
+from multiprocessing import shared_memory
+from multiprocessing.managers import BaseManager
+class QueueManager(BaseManager): pass
+QueueManager.register('get_queue')
+#from multiprocessing import set_start_method
+#set_start_method("spawn")
 
-try:
-    set_start_method('spawn')
-except RuntimeError:
-    pass
-
-def runner(policy_net,benchmark,max_steps,epsilon,reward_spec,final_size_only):
+def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
     env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
     env.reset(benchmark=benchmark)
 
@@ -21,7 +23,11 @@ def runner(policy_net,benchmark,max_steps,epsilon,reward_spec,final_size_only):
         for i in range(max_steps):
             #print(i)
             if random.random() > epsilon:
-                q = policy_net(torch.tensor(observation,dtype=torch.float32))
+                conn = Client(('localhost', 6000), authkey=b'secret password')
+                conn.send(('inference',observation))
+                q = conn.recv()
+                conn.close()
+                #q = policy_net(torch.tensor(observation,dtype=torch.float32))
                 
                 if i > 1 and trajectory[-1][1] == trajectory[-2][1]: # no more than 1 consecutive actions
                     q[trajectory[-1][1]] = -1
@@ -62,7 +68,26 @@ def runner(policy_net,benchmark,max_steps,epsilon,reward_spec,final_size_only):
         return final_size
 
     env.close()
-    return trajectory
+
+    #shared_replay_mem = shared_memory.SharedMemory(name='replay_memory')
+    #buf = shared_replay_mem.buf
+
+    #m = QueueManager(address=('127.0.0.1', 50000), authkey=b'abc')
+    #m.connect()
+    #queue = m.get_queue()
+
+    conn = Client(('localhost', 6000), authkey=b'secret password')
+    conn.send(('enqueue',trajectory))
+    conn.close()
+
+    #for traj in trajectory:
+    #    for step in traj:
+    #        queue.put(step)
+            #buf.append(step)
+
+    print('done')
+    #return None
+    #return trajectory
 
 
 def stress_test(kernel,args,repeat):
