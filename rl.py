@@ -3,6 +3,11 @@ import numpy as np
 import math
 import random
 import time
+from multiprocessing import set_start_method
+#try:
+#    set_start_method('spawn')
+#except RuntimeError:
+#    pass
 from multiprocessing import Pool,cpu_count
 from parallel import runner
 import os
@@ -42,9 +47,14 @@ def sample_traj(episodes=5):
     for _ in range(episodes):
         args.append((train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,epsilon,'ObjectTextSizeBytes',False))
 
-    pool.starmap(runner,[arg for arg in args])
-    pool.close()
+    pool.starmap_async(runner,[arg for arg in args])
+    pool.wait(timeout=100)
 
+    if not pool.successful():
+        pool.terminate()
+
+    pool.close()
+    pool.join()
 
 def get_base_absolute_size(corpus,option='Oz'):
     assert option == 'Oz' or option == 'O3' or option == 'O0', 'unrecognized option'
@@ -67,11 +77,14 @@ def validate(corpus):
     pool = Pool(processes=6)
     args = []
 
+    VAL_MAX_STEPS = 5
     for benchmark in corpus:
-        args.append((benchmark,EP_MAX_STEPS,0,'ObjectTextSizeBytes',True))
+        args.append((benchmark,VAL_MAX_STEPS,0,'ObjectTextSizeBytes',True))
 
     sizes = pool.starmap(runner,[arg for arg in args])
 
+    pool.close()
+    pool.join()
     return sizes
 
 
@@ -101,8 +114,19 @@ def main(ep):
             args.append((train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,epsilon,'ObjectTextSizeBytes',False))
 
         print('sample start')
-        pool.starmap(runner,[arg for arg in args])
-        print('sample end')
+        async_result = pool.starmap_async(runner,[arg for arg in args])
+
+
+        # BUG: pool.starmap will freqeuntly hang/deadlock after everything in the runner is finished
+        async_result.wait(180)
+        if not async_result.ready():
+            pool.terminate()
+            print('terminated')
+            pool.join()
+            pool = Pool(processes = cpu_count() + 20)
+
+        else:
+            print('sample end')
 
         reduction = validate(test_corpus)/test_o0_absolute_size
         print(f'{reduction.mean()}/{reduction.std()}')
@@ -110,9 +134,11 @@ def main(ep):
         counter += EPISODE_PER_EVAL
     
     pool.close()
+    pool.join()
 
 
 if __name__ == '__main__':
+    set_start_method("spawn")
 
     #env = compiler_gym.make("llvm-v0",benchmark="cbench-v1/qsort")
     env = compiler_gym.make("llvm-v0",observation_space="IrSha1",reward_space="ObjectTextSizeNorm")
@@ -122,6 +148,8 @@ if __name__ == '__main__':
     corpus = get_dataset(env)
     train_corpus, test_corpus = split_train_and_test(corpus)
     print(f'Corpus Size : {len(corpus)} ({len(train_corpus)}/{len(test_corpus)})')
+
+    env.close()
 
     test_o0_absolute_size = get_base_absolute_size(test_corpus,'O0')
     test_oz_size_reduction = get_oz_size_reduction(test_corpus)
@@ -158,7 +186,5 @@ if __name__ == '__main__':
     #    sample_traj(100)
     #    print('done sampling')
     #    train()
-
-    env.close()
 
 

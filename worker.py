@@ -2,7 +2,9 @@ import compiler_gym
 import time
 import random
 import numpy as np
-from multiprocessing.connection import Client
+from multiprocessing.connection import Client,Listener
+
+import sys
 
 def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
     env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
@@ -11,16 +13,18 @@ def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
     trajectory = []
 
     observation = env.observation["Autophase"]
-    for i in range(max_steps):
+    steps = 0
+    while steps < max_steps:
+
+    #for i in range(max_steps):
         #print(i)
         if random.random() > epsilon:
             conn = Client(('localhost', 6000), authkey=b'secret password')
             conn.send(('inference',observation))
             q = conn.recv()
             conn.close()
-            #q = policy_net(torch.tensor(observation,dtype=torch.float32))
                 
-            if i > 1 and trajectory[-1][1] == trajectory[-2][1]: # no more than 1 consecutive actions
+            if steps > 1 and trajectory[-1][1] == trajectory[-2][1]: # no more than 1 consecutive actions
                 q[trajectory[-1][1]] = -1
 
             while True:
@@ -45,7 +49,8 @@ def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
             observation_next,reward,done,info = env.step(action)
             
         trajectory.append([observation,action,reward,done,observation_next])
-        
+        steps += 1
+
         if done:
             break
 
@@ -58,50 +63,58 @@ def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
         env.close()
         return final_size
 
-    #env.close()
+    env.close()
 
     conn = Client(('localhost', 6000), authkey=b'secret password')
     conn.send(('enqueue',trajectory))
     conn.close()
 
-    #print('done')
-    #return None
-    #return trajectory
+    return steps
 
 
-def stress_test(kernel,args,repeat):
+def main_loop(listener):
+    running = True
+    while running:
+        conn = listener.accept()
+        
+        args = conn.recv()
 
-    start = time.time()
+        if args[0] == 'sample':
+            steps = runner(*args[1:])
+            conn.send(steps)
+            conn.close()
 
-    results = []
-    for _ in range(repeat):
-        results.append(kernel(*args))
+        elif args[0] == 'exit':
+            conn.close()
+            print('exiting')
+            running = False
 
-    end = time.time()
-    print('No parallelization : ' + str(end - start))
+        else:
+            print(f'Unsupported action {args[0]}')
 
-    for w in range(2,cpu_count()+5):
-        start = time.time()
-        pool = Pool(processes=w)
-        trajectories_prl = pool.starmap(kernel,[args for _ in range(repeat)])
-        end = time.time()
-        print('Spawning ' + str(w) + ' workers : ' + str(end - start))
+
+def handshake(listener):
+    conn = listener.accept()
+    if conn.recv() == 'hi':
+        conn.send('hi back')
+    else:
+        conn.close()
+        sys.exit()
+
+    conn.close()
 
 
 if __name__ == '__main__':
-    print('Core count on this CPU : ' + str(cpu_count()))
+    if len(sys.argv) < 2:
+        print('please enter port where the worker will be listening')
+        sys.exit()
 
-    env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space="ObjectTextSizeBytes")
-    env.reset()
-    policy_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).to(device)
-    policy_net.share_memory()
-    env.close()
+    listener = Listener(('localhost', int(sys.argv[1])), authkey=b'secret password')
+    handshake(listener)
+    main_loop(listener)
 
     JOBS = 100
     WORKERS = 10
     EP_LENGTH = 30
 
-
-    #run_test(JOBS,WORKERS,ACTION_QUEUE)
-    stress_test(runner,(policy_net,"cbench-v1/patricia",EP_LENGTH,0),JOBS)
 

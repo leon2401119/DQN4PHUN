@@ -97,6 +97,10 @@ target_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).
 target_net.eval()
 
 LEARNING_RATE = 0.005
+BATCH_SIZE = 1
+GAMMA = 0.5
+TARGET_UPDATE = 5000
+
 optimizer = optim.Adam(policy_net.parameters(),lr=LEARNING_RATE)
 env.close()
 
@@ -114,28 +118,45 @@ replay_mem = []
 listener = Listener(('localhost', 6000), authkey=b'secret password')
 running = True
 
+
+# Because deadlock freqeuntly occurs in workers, the dispatcher
+# will kill all workers if a predeterimined timeout is reached
+# As a result, server also needs extra fault tolerance mechanisms
+# at every LOC that involves connection to avoid raising exceptions
+# e.g. EOF Error, OS Error, ...etc
+
 while running:
-    conn = listener.accept()
+    try: # safe guarding suuden death of clients
+        conn = listener.accept()
     #print('connection accepted from',listener.last_accepted)
-    msg = conn.recv()
+        msg = conn.recv()
+    except Exception as e:
+        pass
 
     action = msg[0]
 
     if action == 'inference':
         q = policy_net(torch.tensor(msg[1],dtype=torch.float32))
-        conn.send(q.detach().cpu().numpy())
+        try:
+            conn.send(q.detach().cpu().numpy())
+        except Exception as e:
+            pass
         conn.close()
 
     elif action == 'enqueue':
         replay_mem.extend(msg[1])
+        conn.close()
         #print('recved')
 
     elif action == 'train':
         loss = train(*msg[1:])
-        conn.send((steps,loss))
+        try:
+            conn.send((steps,loss))
+        except Exception as e:
+            pass
         conn.close()
 
-    if len(replay_mem) >= 2000:
-        train(1,0.5,5000)
+    #if len(replay_mem) >= 2000:
+    #    train(BATCH_SIZE,GAMMA,TARGET_UPDATE)
 
 
