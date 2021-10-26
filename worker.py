@@ -8,7 +8,7 @@ import sys
 
 
 def train_runner(benchmark,max_steps,reward_spec,epsilon):
-    env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
+    #env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
     env.reset(benchmark=benchmark)
 
     trajectory = []
@@ -36,7 +36,7 @@ def train_runner(benchmark,max_steps,reward_spec,epsilon):
         trajectory.append([observation,action,reward,done,observation_next])
         steps += 1
 
-        if done:
+        if done or reward < -1000: # give reward a threshold if the benchmark becoming too large
             break
 
         observation = observation_next
@@ -44,7 +44,7 @@ def train_runner(benchmark,max_steps,reward_spec,epsilon):
 
     trajectory[-1][3] = True  # set done to True for the last step 
     
-    env.close()
+    #env.close()
     conn = Client(('localhost', 6000), authkey=b'secret password')
     conn.send(('enqueue',trajectory))
     conn.close()
@@ -53,7 +53,7 @@ def train_runner(benchmark,max_steps,reward_spec,epsilon):
 
 
 def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
-    env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
+    #env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
     env.reset(benchmark=benchmark)
 
     trajectory = []
@@ -99,7 +99,7 @@ def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
     trajectory[-1][3] = True  # set done to True for the last step
     
     final_size = env.observation["ObjectTextSizeBytes"]
-    env.close()
+    #env.close()
     return final_size
 
 
@@ -145,6 +145,9 @@ if __name__ == '__main__':
         print('please enter port where the worker will be listening')
         sys.exit()
 
+    reward_spec = 'ObjectTextSizeBytes'
+    env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
+    
     listener = Listener(('localhost', int(sys.argv[1])), authkey=b'secret password')
     handshake(listener)
     main_loop(listener)
