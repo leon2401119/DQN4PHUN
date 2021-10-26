@@ -32,25 +32,6 @@ def split_train_and_test(data,test_ratio=0.25):
     return data[:split],data[split:]
 
 
-
-def sample_traj(episodes=5):
-
-    #pool = Pool(processes=cpu_count()-1) # setting >6 will trigger CUDA OOM error
-    pool = Pool(processes = cpu_count() + 20) # use more process to hide inference latency?
-    args = []
-    epsilon = E_END + (E_START - E_END) * math.exp(-1. * steps / E_DECAY)
-    for _ in range(episodes):
-        args.append((train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,epsilon,'ObjectTextSizeBytes',False))
-
-    pool.starmap_async(runner,[arg for arg in args])
-    pool.wait(timeout=100)
-
-    if not pool.successful():
-        pool.terminate()
-
-    pool.close()
-    pool.join()
-
 def get_base_absolute_size(corpus,option='Oz'):
     assert option == 'Oz' or option == 'O3' or option == 'O0', 'unrecognized option'
     obsv_space = 'ObjectTextSize' + option
@@ -69,12 +50,12 @@ def get_oz_size_reduction(corpus):
 
 
 def validate(corpus, worker_ports):
-    VAL_MAX_STEPS = 5
+    VAL_MAX_STEPS = 10
     conns = [None for _ in worker_ports]
     
     sizes = []
 
-    msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],VAL_MAX_STEPS,0,'ObjectTextSizeBytes',True)
+    msg = ('eval',train_corpus[random.randint(0,len(train_corpus)-1)],VAL_MAX_STEPS,'ObjectTextSizeBytes')
 
     for benchmark in corpus:
         poll_counter = 0
@@ -91,45 +72,58 @@ def validate(corpus, worker_ports):
 
             poll_counter = (poll_counter+1)%len(conns)
 
-            
-    for conn in conns:
+
+    KILL_TIMEOUT = 120
+    for i,conn in enumerate(conns):
         if conn is not None:
-            sizes.append(conn.recv())
-            conn.close()
+            deadlock = False
+            start = time.time()
+            while not conn.poll():
+                time.sleep(1)
+                end = time.time()
+                if end - start > KILL_TIMEOUT:
+                    os.system(f'echo "deadlock occured at worker {i}, restarting..." >>log')
+                    deadlock = True
+                    sizes.append(np.inf)
+                    conn.close()
+                    workers[i].kill()
+                    workers[i] = start_worker(worker_ports[i])
+                    break
+
+            if not deadlock:
+                sizes.append(conn.recv())
+                conn.close()
 
     sizes = np.array(sizes)
     return sizes
 
 
-def train():
+def train(batch_size,gamma,target_update):
     conn = Client(('localhost', 6000), authkey=b'secret password')
     #conn.send(('train',pickle.dumps(replay_memory),BATCH_SIZE,GAMMA,TARGET_UPDATE))
-    conn.send(('train',BATCH_SIZE,GAMMA,TARGET_UPDATE))
+    conn.send(('train',batch_size,gamma,target_update))
     _,_ = conn.recv()
 
-    reduction = validate(test_corpus)/test_o0_absolute_size
-    print(f'{reduction.mean()}/{reduction.std()}')
 
-
-def sample(ep, worker_ports):
+def sample(ep, workers, worker_ports):
     global steps
 
     EPISODE_PER_EVAL = 100
     counter = 0
     conns = [None for _ in worker_ports]
 
-    print('sample start')
+    #print('sample start')
 
     while counter < ep:
         epsilon = E_END + (E_START - E_END) * math.exp(-1. * steps / E_DECAY)
-        msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,epsilon,'ObjectTextSizeBytes',False)
+        msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,'ObjectTextSizeBytes',epsilon)
 
         poll_counter = 0
         while True:
             if conns[poll_counter] is None:
                 conns[poll_counter] = Client(('localhost',worker_ports[poll_counter]), authkey=b'secret password')
                 conns[poll_counter].send(msg)
-                print(f'task scheduled to {poll_counter}')
+                #print(f'task scheduled to {poll_counter}')
                 break
 
             elif conns[poll_counter].poll():
@@ -142,46 +136,57 @@ def sample(ep, worker_ports):
         counter += 1
 
     # finish the job
-    for conn in conns:
+    KILL_TIMEOUT = 60
+    for i,conn in enumerate(conns):
         if conn is not None:
-            print('cleaning up')
-            steps += conn.recv()
-            conn.close()
+            #print('cleaning up')
+            deadlock = False
+            start = time.time()
+            while not conn.poll():
+                time.sleep(1)
+                end = time.time()
+                if end - start > KILL_TIMEOUT:
+                    os.system(f'echo "deadlock occured at worker {i}, restarting..." >>log')
+                    #print(f'deadlock occured at worker {i}, restarting...')
+                    deadlock = True
+                    conn.close()
+                    workers[i].kill()
+                    workers[i] = start_worker(worker_ports[i])
+                    break
 
+            if not deadlock:
+                steps += conn.recv()
+                conn.close()
 
     return
 
-        #if not counter%EPISIDE_PER_EVAL:
-        #    print('sample end')
 
-        #    reduction = validate(test_corpus)/test_o0_absolute_size
-        #    print(f'{reduction.mean()}/{reduction.std()}')
+def handshake(port):
+    while True:
+        try:
+            conn = Client(('localhost',port), authkey=b'secret password')
+            break
+        except Exception as e:
+            pass
 
-        #    print('sample start')
+    conn.send('hi')
+    if conn.recv() == 'hi back':
+        os.system(f'echo "worker on port {port} ready" >>log')
+        #print(f'worker on port {port} ready')
+    conn.close()
 
 
+def start_worker(port):
+    proc = subprocess.Popen(['python3','worker.py',str(port)])
+    handshake(port)
+    return proc
 
 def start_workers(ports):
-    def handshake(port):
-        while True:
-            try:
-                conn = Client(('localhost',port), authkey=b'secret password')
-                break
-            except Exception as e:
-                pass
-
-        conn.send('hi')
-        msg = conn.recv()
-        if msg == 'hi back':
-            print(f'worker on port {port} ready')
-        conn.close()
-
+    workers = []
     for port in ports:
-        subprocess.Popen(['python3','worker.py',str(port)])
+        workers.append(start_worker(port))
 
-    for port in ports:
-        handshake(port)
-
+    return workers
 
 def kill_workers(ports):
     for port in ports:
@@ -189,8 +194,9 @@ def kill_workers(ports):
         conn.send(('exit',))
 
 
-
 if __name__ == '__main__':
+    os.system(f'rm -f log')
+
 
     env = compiler_gym.make("llvm-v0",observation_space="IrSha1",reward_space="ObjectTextSizeNorm")
     env.reset()
@@ -218,15 +224,16 @@ if __name__ == '__main__':
     TARGET_UPDATE = 2000
     #TARGET_UPDATE = 500
     #EP_MAX_STEPS = 100
-    EP_MAX_STEPS = 10
+    EP_MAX_STEPS = 50
     LEARNING_RATE = 0.0005
 
-   
     PORT_START = 2450
-    WORKER_COUNT = cpu_count() + 10
+    #WORKER_COUNT = cpu_count() + 10
     #WORKER_COUNT = 5
+    WORKER_COUNT = 15
+
     ports = [port for port in range(PORT_START,PORT_START + WORKER_COUNT)]
-    start_workers(ports)
+    workers = start_workers(ports)
 
     steps = 0
 
@@ -234,10 +241,11 @@ if __name__ == '__main__':
     #reduction = validate(test_corpus)/test_o0_absolute_size 
     #print(f'Init : {reduction.mean()}/{reduction.std()}')
 
-    while True:
-        sample(100,ports)
-    reduction = validate(test_corpus,ports)/test_o0_absolute_size
-    print(f'{reduction.mean()}/{reduction.std()}')
+    for _ in range(1000):
+        sample(30,workers,ports)
+        train(BATCH_SIZE,GAMMA,TARGET_UPDATE)
+        reduction = validate(test_corpus,ports)/test_o0_absolute_size
+        print(f'{reduction.mean()}/{reduction.std()}')
 
     kill_workers(ports)
 

@@ -29,7 +29,7 @@ def train(batch_size,gamma,target_update):
     global replay_mem
     #data = replay_mem
     while len(replay_mem):
-        if len(replay_mem)>=batch_size:
+        if len(replay_mem)>batch_size:
             batch = replay_mem[:batch_size]
             replay_mem = replay_mem[batch_size:]
 

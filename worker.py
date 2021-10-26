@@ -6,7 +6,53 @@ from multiprocessing.connection import Client,Listener
 
 import sys
 
-def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
+
+def train_runner(benchmark,max_steps,reward_spec,epsilon):
+    env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
+    env.reset(benchmark=benchmark)
+
+    trajectory = []
+
+    observation = env.observation["Autophase"]
+    steps = 0
+    while steps < max_steps:
+        if random.random() > epsilon:
+            conn = Client(('localhost', 6000), authkey=b'secret password')
+            conn.send(('inference',observation))
+            q = conn.recv()
+            conn.close()
+
+            if steps > 1 and trajectory[-1][1] == trajectory[-2][1]:
+                # forbid more than 1 same consecutive actions
+                q[trajectory[-1][1]] = -10000
+
+            action = q.argmax().item()
+            
+        else:
+            action = env.action_space.sample()
+
+        observation_next,reward,done,info = env.step(action)
+
+        trajectory.append([observation,action,reward,done,observation_next])
+        steps += 1
+
+        if done:
+            break
+
+        observation = observation_next
+
+
+    trajectory[-1][3] = True  # set done to True for the last step 
+    
+    env.close()
+    conn = Client(('localhost', 6000), authkey=b'secret password')
+    conn.send(('enqueue',trajectory))
+    conn.close()
+
+    return steps
+
+
+def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
     env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
     env.reset(benchmark=benchmark)
 
@@ -16,37 +62,31 @@ def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
     steps = 0
     while steps < max_steps:
 
-    #for i in range(max_steps):
-        #print(i)
-        if random.random() > epsilon:
-            conn = Client(('localhost', 6000), authkey=b'secret password')
-            conn.send(('inference',observation))
-            q = conn.recv()
-            conn.close()
+        conn = Client(('localhost', 6000), authkey=b'secret password')
+        conn.send(('inference',observation))
+        q = conn.recv()
+        conn.close()
                 
-            if steps > 1 and trajectory[-1][1] == trajectory[-2][1]: # no more than 1 consecutive actions
-                q[trajectory[-1][1]] = -1
+        if steps > 1 and trajectory[-1][1] == trajectory[-2][1]: # no more than 1 consecutive actions
+            q[trajectory[-1][1]] = -1
 
-            while True:
-                action = q.argmax().item()
+        while True:
+            action = q.argmax().item()
 
-                if q[action] < 0: # no pass is predicted to improve
-                    break
+            if q[action] < 0: # no pass is predicted to improve
+                break
 
-                observation_next,reward,done,info = env.step(action)
-                    
-                if not info['action_had_no_effect']:
-                    break
-
-                else:
-                    q[action] = -1
-
-            if q[action] < 0:
-                break # break again from inner break condition
-
-        else:
-            action = env.action_space.sample()
             observation_next,reward,done,info = env.step(action)
+                    
+            if not info['action_had_no_effect']:
+                break
+
+            else:
+                q[action] = -1
+
+        if q[action] < 0:
+            break # break again from inner break condition
+
             
         trajectory.append([observation,action,reward,done,observation_next])
         steps += 1
@@ -58,18 +98,9 @@ def runner(benchmark,max_steps,epsilon,reward_spec,final_size_only):
 
     trajectory[-1][3] = True  # set done to True for the last step
     
-    if final_size_only:
-        final_size = env.observation["ObjectTextSizeBytes"]
-        env.close()
-        return final_size
-
+    final_size = env.observation["ObjectTextSizeBytes"]
     env.close()
-
-    conn = Client(('localhost', 6000), authkey=b'secret password')
-    conn.send(('enqueue',trajectory))
-    conn.close()
-
-    return steps
+    return final_size
 
 
 def main_loop(listener):
@@ -80,8 +111,13 @@ def main_loop(listener):
         args = conn.recv()
 
         if args[0] == 'sample':
-            steps = runner(*args[1:])
+            steps = train_runner(*args[1:])
             conn.send(steps)
+            conn.close()
+
+        elif args[0] == 'eval':
+            result = test_runner(*args[1:])
+            conn.send(result)
             conn.close()
 
         elif args[0] == 'exit':
