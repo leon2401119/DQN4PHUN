@@ -117,7 +117,9 @@ def sample(ep, workers, worker_ports):
 
     while counter < ep:
         epsilon = E_END + (E_START - E_END) * math.exp(-1. * steps / E_DECAY)
-        msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,'ObjectTextSizeBytes',epsilon)
+        #msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,'ObjectTextSizeBytes',epsilon)
+
+        msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,'ObjectTextSizeNorm',epsilon)
 
         poll_counter = 0
         while True:
@@ -218,7 +220,7 @@ if __name__ == '__main__':
     #print(f'Oz : {test_oz_size_reduction.mean()}/{test_oz_size_reduction.std()}')
     
 
-    BATCH_SIZE = 64
+    BATCH_SIZE = 8
     #GAMMA = 0.999
     GAMMA = 0.5
     E_START = 0.99
@@ -226,8 +228,8 @@ if __name__ == '__main__':
     #E_DECAY = 2000
     E_DECAY = 200000
     #TARGET_UPDATE = 10000
-    TARGET_UPDATE = 2000
-    #TARGET_UPDATE = 500
+    #TARGET_UPDATE = 2000
+    TARGET_UPDATE = 50
     EP_MAX_STEPS = 100
     #EP_MAX_STEPS = 50
     LEARNING_RATE = 0.01
