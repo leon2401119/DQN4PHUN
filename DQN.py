@@ -7,9 +7,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class DQN(nn.Module):
     def __init__(self,input_width,num_actions):
         super(DQN,self).__init__()
-        self.dense1 = nn.Linear(input_width,100)
-        self.dense2 = nn.Linear(100,100)
-        self.dense3 = nn.Linear(100,num_actions)
+        self.dense1 = nn.Linear(input_width,300)
+        self.dense2 = nn.Linear(300,300)
+        self.dense3 = nn.Linear(300,300)
+        self.dense4 = nn.Linear(300,num_actions)
 
     def forward(self,x):
         x = x.to(device)
@@ -19,6 +20,7 @@ class DQN(nn.Module):
         x = self.dense1(x)
         x = self.dense2(x)
         x = self.dense3(x)
+        x = self.dense4(x)
         return x
 
 

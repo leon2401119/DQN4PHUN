@@ -27,6 +27,7 @@ def train(batch_size,gamma,target_update):
     #q = manager.get_queue()
 
     global replay_mem
+    random.shuffle(replay_mem)
     #data = replay_mem
     while len(replay_mem):
         if len(replay_mem)>batch_size:
@@ -47,7 +48,7 @@ def train(batch_size,gamma,target_update):
     #            print(e)
 
         s0, s1, r, a, done = [],[],[],[],[]
-        for i in range(batch_size):
+        for i in range(len(batch)):
             s0.append(batch[i][0])
             s1.append(batch[i][4])
             done.append(batch[i][3])
@@ -82,7 +83,7 @@ def train(batch_size,gamma,target_update):
         if not steps % target_update:
             target_net.load_state_dict(policy_net.state_dict())
 
-        if not steps % 1000:
+        if not steps % 10:
             print(f'{loss.item()}')
 
     return loss.item()

@@ -55,13 +55,14 @@ def validate(corpus, worker_ports):
     
     sizes = []
 
-    msg = ('eval',train_corpus[random.randint(0,len(train_corpus)-1)],VAL_MAX_STEPS,'ObjectTextSizeBytes')
+    #msg = ('eval',train_corpus[random.randint(0,len(train_corpus)-1)],VAL_MAX_STEPS,'ObjectTextSizeBytes')
 
     for benchmark in corpus:
         poll_counter = 0
         while True:
             if conns[poll_counter] is None:
                 conns[poll_counter] = Client(('localhost',worker_ports[poll_counter]), authkey=b'secret password')
+                msg = ('eval',benchmark,VAL_MAX_STEPS,'ObjectTextSizeBytes')
                 conns[poll_counter].send(msg)
                 break
             
@@ -201,7 +202,7 @@ if __name__ == '__main__':
     env = compiler_gym.make("llvm-v0",observation_space="IrSha1",reward_space="ObjectTextSizeNorm")
     env.reset()
 
-    corpus = get_dataset(env,"benchmark://blas-v0")
+    #corpus = get_dataset(env,"benchmark://blas-v0")
     corpus = get_dataset(env)
     train_corpus, test_corpus = split_train_and_test(corpus)
     print(f'Corpus Size : {len(corpus)} ({len(train_corpus)}/{len(test_corpus)})')
@@ -209,11 +210,15 @@ if __name__ == '__main__':
     env.close()
 
     test_o0_absolute_size = get_base_absolute_size(test_corpus,'O0')
-    test_oz_size_reduction = get_oz_size_reduction(test_corpus)
-    print(f'Oz : {test_oz_size_reduction.mean()}/{test_oz_size_reduction.std()}')
+    test_oz_absolute_size = get_base_absolute_size(test_corpus,'Oz')
+    test_oz_size_reduction = test_oz_absolute_size/test_o0_absolute_size
+    #test_oz_size_reduction = get_oz_size_reduction(test_corpus)
+    print(test_o0_absolute_size)
+    print(test_oz_absolute_size)
+    #print(f'Oz : {test_oz_size_reduction.mean()}/{test_oz_size_reduction.std()}')
     
 
-    BATCH_SIZE = 1
+    BATCH_SIZE = 64
     #GAMMA = 0.999
     GAMMA = 0.5
     E_START = 0.99
@@ -223,14 +228,14 @@ if __name__ == '__main__':
     #TARGET_UPDATE = 10000
     TARGET_UPDATE = 2000
     #TARGET_UPDATE = 500
-    #EP_MAX_STEPS = 100
-    EP_MAX_STEPS = 50
-    LEARNING_RATE = 0.0005
+    EP_MAX_STEPS = 100
+    #EP_MAX_STEPS = 50
+    LEARNING_RATE = 0.01
 
     PORT_START = 2450
     #WORKER_COUNT = cpu_count() + 10
-    #WORKER_COUNT = 5
-    WORKER_COUNT = 15
+    WORKER_COUNT = 5
+    #WORKER_COUNT = 15
 
     ports = [port for port in range(PORT_START,PORT_START + WORKER_COUNT)]
     workers = start_workers(ports)
@@ -238,14 +243,18 @@ if __name__ == '__main__':
     steps = 0
 
 
-    #reduction = validate(test_corpus)/test_o0_absolute_size 
+    reduction = validate(test_corpus,ports)/test_o0_absolute_size 
+    print(reduction)
+    #assert True==False
     #print(f'Init : {reduction.mean()}/{reduction.std()}')
 
     for _ in range(1000):
         sample(30,workers,ports)
         train(BATCH_SIZE,GAMMA,TARGET_UPDATE)
-        reduction = validate(test_corpus,ports)/test_o0_absolute_size
-        print(f'{reduction.mean()}/{reduction.std()}')
+        #reduction = validate(test_corpus,ports)/test_o0_absolute_size
+        #print(reduction)
+        print(validate(test_corpus,ports))
+        #print(f'{reduction.mean()}/{reduction.std()}')
 
     kill_workers(ports)
 

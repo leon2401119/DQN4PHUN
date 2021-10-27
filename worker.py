@@ -3,7 +3,7 @@ import time
 import random
 import numpy as np
 from multiprocessing.connection import Client,Listener
-
+import os
 import sys
 
 
@@ -31,12 +31,15 @@ def train_runner(benchmark,max_steps,reward_spec,epsilon):
         else:
             action = env.action_space.sample()
 
-        observation_next,reward,done,info = env.step(action)
+        try: # remember kids, compiler crashes DO occur
+            observation_next,reward,done,info = env.step(action)
+        except Exception as e:
+            break # terminate immediately, and let the last successful action be the last step
 
         trajectory.append([observation,action,reward,done,observation_next])
         steps += 1
 
-        if done or reward < -1000: # give reward a threshold if the benchmark becoming too large
+        if done or reward < -100000: # give reward a threshold if the benchmark becoming too large
             break
 
         observation = observation_next
@@ -76,8 +79,11 @@ def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
             if q[action] < 0: # no pass is predicted to improve
                 break
 
-            observation_next,reward,done,info = env.step(action)
-                    
+            try:
+                observation_next,reward,done,info = env.step(action)
+            except Exception as e:
+                return np.NINF # negative infinity reward
+
             if not info['action_had_no_effect']:
                 break
 
@@ -100,6 +106,11 @@ def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
     
     final_size = env.observation["ObjectTextSizeBytes"]
     #env.close()
+
+    bench_name = benchmark.split('/')[-1]
+    os.system(f'echo "{final_size}" >>logs/{bench_name}')
+    os.system(f'echo "{env.commandline()}" >>logs/{bench_name}')
+
     return final_size
 
 
