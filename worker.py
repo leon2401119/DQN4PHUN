@@ -102,7 +102,8 @@ def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
 
         observation = observation_next
 
-    trajectory[-1][3] = True  # set done to True for the last step
+    if len(trajectory): # it is possible in testing phase that we don't take any action at all
+        trajectory[-1][3] = True  # set done to True for the last step
     
     final_size = env.observation["ObjectTextSizeBytes"]
     #env.close()
@@ -156,7 +157,8 @@ if __name__ == '__main__':
         print('please enter port where the worker will be listening')
         sys.exit()
 
-    reward_spec = 'ObjectTextSizeBytes'
+    #reward_spec = 'ObjectTextSizeBytes'
+    reward_spec = 'ObjectTextSizeNorm'
     env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
     
     listener = Listener(('localhost', int(sys.argv[1])), authkey=b'secret password')

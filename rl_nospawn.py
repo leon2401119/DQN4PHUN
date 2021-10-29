@@ -220,6 +220,8 @@ if __name__ == '__main__':
     #print(f'Oz : {test_oz_size_reduction.mean()}/{test_oz_size_reduction.std()}')
     
 
+# hyperparameters for training is DEPRECATED here, and is replaced in agent.py
+
     BATCH_SIZE = 8
     #GAMMA = 0.999
     GAMMA = 0.5
@@ -228,16 +230,17 @@ if __name__ == '__main__':
     #E_DECAY = 2000
     E_DECAY = 200000
     #TARGET_UPDATE = 10000
-    #TARGET_UPDATE = 2000
-    TARGET_UPDATE = 50
-    EP_MAX_STEPS = 100
-    #EP_MAX_STEPS = 50
+    TARGET_UPDATE = 2000
+    #TARGET_UPDATE = 50
+    #EP_MAX_STEPS = 100
+    EP_MAX_STEPS = 30
     LEARNING_RATE = 0.01
+    #LEARNING_RATE = 0.0005
 
     PORT_START = 2450
     #WORKER_COUNT = cpu_count() + 10
-    WORKER_COUNT = 5
-    #WORKER_COUNT = 15
+    #WORKER_COUNT = 5
+    WORKER_COUNT = 15
 
     ports = [port for port in range(PORT_START,PORT_START + WORKER_COUNT)]
     workers = start_workers(ports)
@@ -253,9 +256,9 @@ if __name__ == '__main__':
     for _ in range(1000):
         sample(30,workers,ports)
         train(BATCH_SIZE,GAMMA,TARGET_UPDATE)
-        #reduction = validate(test_corpus,ports)/test_o0_absolute_size
-        #print(reduction)
-        print(validate(test_corpus,ports))
+        reduction = validate(test_corpus,ports)/test_o0_absolute_size
+        print(reduction)
+        #print(validate(test_corpus,ports))
         #print(f'{reduction.mean()}/{reduction.std()}')
 
     kill_workers(ports)

@@ -60,8 +60,15 @@ def train(batch_size,gamma,target_update):
         r = torch.tensor(r).to(device)
         a = torch.tensor(a).to(device)
 
+        #print(r)
+
         Q_s0 = torch.gather(policy_net(s0),1,a)
-        Q_s1 = target_net(s1).max(dim=1,keepdim=True)[0].detach()
+        
+        #### Double DQN
+        a_next = policy_net(s1).argmax(dim=1,keepdim=True)
+        Q_s1 = torch.gather(target_net(s1),1,a_next)
+        
+        #Q_s1 = target_net(s1).max(dim=1,keepdim=True)[0].detach()
 
         Q_target = Q_s1 + gamma*r
         for j,mask in enumerate(done):
@@ -97,10 +104,12 @@ policy_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).
 target_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).to(device)
 target_net.eval()
 
-LEARNING_RATE = 0.005
-BATCH_SIZE = 1
-GAMMA = 0.5
-TARGET_UPDATE = 5000
+#LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0001
+BATCH_SIZE = 8
+#GAMMA = 0.5
+GAMMA = 0.999
+TARGET_UPDATE = 50
 
 optimizer = optim.Adam(policy_net.parameters(),lr=LEARNING_RATE)
 env.close()
