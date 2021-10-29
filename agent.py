@@ -105,11 +105,12 @@ target_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).
 target_net.eval()
 
 #LEARNING_RATE = 0.001
-LEARNING_RATE = 0.0001
-BATCH_SIZE = 8
+#LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.00004
+#BATCH_SIZE = 8
 #GAMMA = 0.5
-GAMMA = 0.999
-TARGET_UPDATE = 50
+#GAMMA = 0.999
+#TARGET_UPDATE = 50
 
 optimizer = optim.Adam(policy_net.parameters(),lr=LEARNING_RATE)
 env.close()

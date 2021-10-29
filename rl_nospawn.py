@@ -50,7 +50,7 @@ def get_oz_size_reduction(corpus):
 
 
 def validate(corpus, worker_ports):
-    VAL_MAX_STEPS = 10
+    VAL_MAX_STEPS = 30
     conns = [None for _ in worker_ports]
     
     sizes = []
@@ -215,26 +215,27 @@ if __name__ == '__main__':
     test_oz_absolute_size = get_base_absolute_size(test_corpus,'Oz')
     test_oz_size_reduction = test_oz_absolute_size/test_o0_absolute_size
     #test_oz_size_reduction = get_oz_size_reduction(test_corpus)
-    print(test_o0_absolute_size)
-    print(test_oz_absolute_size)
+    #print(test_o0_absolute_size)
+    #print(test_oz_absolute_size)
     #print(f'Oz : {test_oz_size_reduction.mean()}/{test_oz_size_reduction.std()}')
-    
 
-# hyperparameters for training is DEPRECATED here, and is replaced in agent.py
+    train_o0_absolute_size = get_base_absolute_size(train_corpus,'O0')
+
 
     BATCH_SIZE = 8
-    #GAMMA = 0.999
-    GAMMA = 0.5
+    GAMMA = 0.999
+    #GAMMA = 0.5
     E_START = 0.99
     E_END = 0.5
     #E_DECAY = 2000
     E_DECAY = 200000
     #TARGET_UPDATE = 10000
     TARGET_UPDATE = 2000
+    #TARGET_UPDATE = 500
     #TARGET_UPDATE = 50
-    #EP_MAX_STEPS = 100
-    EP_MAX_STEPS = 30
-    LEARNING_RATE = 0.01
+    EP_MAX_STEPS = 100
+    #EP_MAX_STEPS = 30
+    #LEARNING_RATE = 0.01
     #LEARNING_RATE = 0.0005
 
     PORT_START = 2450
@@ -248,18 +249,19 @@ if __name__ == '__main__':
     steps = 0
 
 
-    reduction = validate(test_corpus,ports)/test_o0_absolute_size 
-    print(reduction)
-    #assert True==False
-    #print(f'Init : {reduction.mean()}/{reduction.std()}')
+    #reduction = validate(test_corpus,ports)/test_o0_absolute_size 
+    reduction = validate(train_corpus,ports)/train_o0_absolute_size
+    #print(reduction)
+    print(f'Init : {reduction.mean()}/{reduction.std()}')
 
     for _ in range(1000):
         sample(30,workers,ports)
         train(BATCH_SIZE,GAMMA,TARGET_UPDATE)
-        reduction = validate(test_corpus,ports)/test_o0_absolute_size
-        print(reduction)
+        #reduction = validate(test_corpus,ports)/test_o0_absolute_size
+        reduction = validate(train_corpus,ports)/train_o0_absolute_size
+        #print(reduction)
         #print(validate(test_corpus,ports))
-        #print(f'{reduction.mean()}/{reduction.std()}')
+        print(f'{reduction.mean()}/{reduction.std()}')
 
     kill_workers(ports)
 
