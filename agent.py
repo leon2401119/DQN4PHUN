@@ -6,7 +6,7 @@ import compiler_gym
 import pickle
 from multiprocessing.connection import Listener
 from multiprocessing import shared_memory
-from DQN import DQN
+from DQN import *
 import random
 import os
 #from multiprocessing.managers import BaseManager
@@ -60,6 +60,9 @@ def train(batch_size,gamma,target_update):
         r = torch.tensor(r).to(device)
         a = torch.tensor(a).to(device)
 
+
+        s0 = pad_sequence(s0,batch_first=True)
+        s1 = pad_sequence(s1,batch_first=True)
         #print(r)
 
         Q_s0 = torch.gather(policy_net(s0),1,a)
@@ -100,8 +103,10 @@ env = compiler_gym.make("llvm-v0")
 env.reset()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-policy_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).to(device)
-target_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).to(device)
+#policy_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).to(device)
+#target_net = DQN(len(env.observation["Autophase"]),len(env.action_space.names)).to(device)
+policy_net = DQN_LSTM(len(env.observation["Inst2vec"][0]),len(env.action_space.names)).to(device)
+target_net = DQN_LSTM(len(env.observation["Inst2vec"][0]),len(env.action_space.names)).to(device)
 target_net.eval()
 
 #LEARNING_RATE = 0.001
@@ -147,7 +152,9 @@ while running:
     action = msg[0]
 
     if action == 'inference':
-        q = policy_net(torch.tensor(msg[1],dtype=torch.float32))
+        # for DQN_LSTM
+        q = policy_net(torch.tensor([msg[1]],dtype=torch.float32))
+        #q = policy_net(torch.tensor(msg[1],dtype=torch.float32))
         try:
             conn.send(q.detach().cpu().numpy())
         except Exception as e:
@@ -155,7 +162,8 @@ while running:
         conn.close()
 
     elif action == 'enqueue':
-        replay_mem.extend(msg[1])
+        #replay_mem.extend(msg[1])
+        replay_mem.extend([msg[1]])
         conn.close()
         #print('recved')
 

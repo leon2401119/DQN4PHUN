@@ -7,15 +7,16 @@ import os
 import sys
 
 
-def train_runner(benchmark,max_steps,reward_spec,epsilon):
+def train_runner(benchmark,max_steps,epsilon):
     #env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
     env.reset(benchmark=benchmark)
 
     trajectory = []
 
-    observation = env.observation["Autophase"]
+    observation = env.observation[observation_spec]
     steps = 0
     while steps < max_steps:
+        print(steps)
         if random.random() > epsilon:
             conn = Client(('localhost', 6000), authkey=b'secret password')
             conn.send(('inference',observation))
@@ -33,6 +34,7 @@ def train_runner(benchmark,max_steps,reward_spec,epsilon):
 
         try: # remember kids, compiler crashes DO occur
             observation_next,reward,done,info = env.step(action)
+            observation_next = env.observation[observation_spec]
         except Exception as e:
             break # terminate immediately, and let the last successful action be the last step
 
@@ -55,16 +57,16 @@ def train_runner(benchmark,max_steps,reward_spec,epsilon):
     return steps
 
 
-def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
+def test_runner(benchmark,max_steps,epsilon=None):
     #env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
     env.reset(benchmark=benchmark)
 
     trajectory = []
 
-    observation = env.observation["Autophase"]
+    observation = env.observation[observation_spec]
     steps = 0
     while steps < max_steps:
-
+        print('test' + str(steps))
         conn = Client(('localhost', 6000), authkey=b'secret password')
         conn.send(('inference',observation))
         q = conn.recv()
@@ -81,6 +83,7 @@ def test_runner(benchmark,max_steps,reward_spec,epsilon=None):
 
             try:
                 observation_next,reward,done,info = env.step(action)
+                observation_next = env.observation[observation_spec]
             except Exception as e:
                 return np.NINF # negative infinity reward
 
@@ -158,9 +161,11 @@ if __name__ == '__main__':
         sys.exit()
 
     #reward_spec = 'ObjectTextSizeBytes'
+    observation_spec = 'Inst2vec'
     reward_spec = 'ObjectTextSizeNorm'
-    env = compiler_gym.make("llvm-v0",observation_space="Autophase",reward_space=reward_spec)
-    
+    #env = compiler_gym.make("llvm-v0",observation_space=observation_spec,reward_space=reward_spec)
+    env = compiler_gym.make("llvm-v0",reward_space=reward_spec)
+
     listener = Listener(('localhost', int(sys.argv[1])), authkey=b'secret password')
     handshake(listener)
     main_loop(listener)

@@ -26,7 +26,7 @@ class DQN(nn.Module):
 
 
 class DQN_LSTM(nn.Module):
-    def __init__(self,vector,width,num_actions):
+    def __init__(self,vector_width,num_actions):
         super(DQN_LSTM,self).__init__()
 
         LSTM_INIT = {
@@ -44,9 +44,9 @@ class DQN_LSTM(nn.Module):
 
     def forward(self,x):
         x = x.to(device)
-        x = F.relu(self.lstm(x)[1][0].squeeze()) # output,(h_n,c_n)
-        x = F.relu(self.dense1(x))
-        x = F.relu(self.dense2(x))
+        x = torch.tanh(self.lstm(x)[1][0].squeeze()) # output,(h_n,c_n)
+        x = torch.tanh(self.dense1(x))
+        x = torch.tanh(self.dense2(x))
         return x
 
 

@@ -62,7 +62,7 @@ def validate(corpus, worker_ports):
         while True:
             if conns[poll_counter] is None:
                 conns[poll_counter] = Client(('localhost',worker_ports[poll_counter]), authkey=b'secret password')
-                msg = ('eval',benchmark,VAL_MAX_STEPS,'ObjectTextSizeBytes')
+                msg = ('eval',benchmark,VAL_MAX_STEPS)
                 conns[poll_counter].send(msg)
                 break
             
@@ -119,7 +119,7 @@ def sample(ep, workers, worker_ports):
         epsilon = E_END + (E_START - E_END) * math.exp(-1. * steps / E_DECAY)
         #msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,'ObjectTextSizeBytes',epsilon)
 
-        msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,'ObjectTextSizeNorm',epsilon)
+        msg = ('sample',train_corpus[random.randint(0,len(train_corpus)-1)],EP_MAX_STEPS,epsilon)
 
         poll_counter = 0
         while True:
@@ -240,8 +240,8 @@ if __name__ == '__main__':
 
     PORT_START = 2450
     #WORKER_COUNT = cpu_count() + 10
-    #WORKER_COUNT = 5
-    WORKER_COUNT = 15
+    WORKER_COUNT = 1
+    #WORKER_COUNT = 15
 
     ports = [port for port in range(PORT_START,PORT_START + WORKER_COUNT)]
     workers = start_workers(ports)
