@@ -222,19 +222,20 @@ if __name__ == '__main__':
     train_o0_absolute_size = get_base_absolute_size(train_corpus,'O0')
 
 
-    BATCH_SIZE = 8
+    #BATCH_SIZE = 8
+    BATCH_SIZE = 64
     GAMMA = 0.999
     #GAMMA = 0.5
     E_START = 0.99
     E_END = 0.5
     #E_DECAY = 2000
     E_DECAY = 200000
-    #TARGET_UPDATE = 10000
-    TARGET_UPDATE = 2000
-    #TARGET_UPDATE = 500
+    #TARGET_UPDATE = 50000
+    #TARGET_UPDATE = 2000
+    TARGET_UPDATE = 500
     #TARGET_UPDATE = 50
-    EP_MAX_STEPS = 100
-    #EP_MAX_STEPS = 30
+    #EP_MAX_STEPS = 100
+    EP_MAX_STEPS = 30
     #LEARNING_RATE = 0.01
     #LEARNING_RATE = 0.0005
 
@@ -255,7 +256,7 @@ if __name__ == '__main__':
     print(f'Init : {reduction.mean()}/{reduction.std()}')
 
     for _ in range(1000):
-        sample(30,workers,ports)
+        sample(100,workers,ports)
         train(BATCH_SIZE,GAMMA,TARGET_UPDATE)
         #reduction = validate(test_corpus,ports)/test_o0_absolute_size
         reduction = validate(train_corpus,ports)/train_o0_absolute_size

@@ -9,34 +9,24 @@ from multiprocessing import shared_memory
 from DQN import DQN
 import random
 import os
-#from multiprocessing.managers import BaseManager
-#from queue import Queue
-#queue = Queue()
-#class QueueManager(BaseManager): pass
-#QueueManager.register('get_queue', callable=lambda:queue)
+
 
 #def train(data,batch_size,gamma,target_update):
 def train(batch_size,gamma,target_update):
     global steps
 
-    #data = pickle.loads(data)
-    #print(data)
-    #random.shuffle(data)
-
-    #data = shm.buf
-    #q = manager.get_queue()
-
     global replay_mem
     random.shuffle(replay_mem)
-    #data = replay_mem
-    while len(replay_mem):
-        if len(replay_mem)>batch_size:
-            batch = replay_mem[:batch_size]
-            replay_mem = replay_mem[batch_size:]
+    
+    batch_start = 0
+    while batch_start < len(replay_mem):
+        if len(replay_mem) > batch_start + batch_size:
+            batch = replay_mem[batch_start : batch_start + batch_size]
 
         else:
-            batch = replay_mem
-            replay_mem = []
+            batch = replay_mem[batch_start:]
+
+        batch_start += batch_size
 
     #while not q.empty():
     #    batch = []
@@ -118,11 +108,6 @@ env.close()
 steps = 0
 os.system(f'rm -f loss_history')
 
-#shm = shared_memory.SharedMemory(create=True, size=1e8,name='replay_memory')
-#manager = QueueManager(address=('', 50000), authkey=b'abc')
-#manager.start()
-#server = manager.get_server()
-#server.serve_forever()
 
 replay_mem = []
 
@@ -160,7 +145,9 @@ while running:
         #print('recved')
 
     elif action == 'train':
-        loss = train(*msg[1:])
+        for _ in range(3):
+            loss = train(*msg[1:])
+        replay_mem = []
         try:
             conn.send((steps,loss))
         except Exception as e:
